@@ -1,7 +1,7 @@
 from collections.abc import Collection
 from typing import Any, cast
 
-from sqlalchemy import CursorResult, select, update
+from sqlalchemy import CursorResult, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from components.domain.entities.generation import Generation
@@ -30,6 +30,30 @@ class GenerationRepository(IGenerationRepository):
         )
         return None if model is None else generation_to_domain(model)
 
+    async def list_stale(
+        self,
+        *,
+        older_than_seconds: int,
+        limit: int,
+    ) -> list[Generation]:
+        # Границу считаем по часам БД: ими же проставляется updated_at.
+        threshold = func.timestampadd(text("SECOND"), -older_than_seconds, func.now())
+        result = await self._session.scalars(
+            select(Generations)
+            .where(
+                Generations.status.in_(
+                    [
+                        GenerationStatus.PENDING.value,
+                        GenerationStatus.PROCESSING.value,
+                    ]
+                ),
+                Generations.updated_at < threshold,
+            )
+            .order_by(Generations.updated_at)
+            .limit(limit)
+        )
+        return [generation_to_domain(model) for model in result]
+
     async def change_status(
         self,
         generation_id: str,
@@ -47,6 +71,13 @@ class GenerationRepository(IGenerationRepository):
                 Generations.id == generation_id,
                 Generations.status.in_([status.value for status in expected]),
             )
-            .values(status=new.value, result_url=result_url, error=error)
+            .values(
+                status=new.value,
+                result_url=result_url,
+                error=error,
+                # Явно, а не через onupdate модели: по updated_at сверка
+                # определяет зависшие генерации.
+                updated_at=func.now(),
+            )
         )
         return cast(CursorResult[Any], result).rowcount == 1

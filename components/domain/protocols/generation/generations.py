@@ -10,6 +10,16 @@ class IGenerationRepository(Protocol):
 
     async def get(self, generation_id: str) -> Generation | None: ...
 
+    async def list_stale(
+        self,
+        *,
+        older_than_seconds: int,
+        limit: int,
+    ) -> list[Generation]:
+        """Незавершённые генерации (pending, processing), статус которых
+        не менялся дольше older_than_seconds. Сначала самые старые."""
+        ...
+
     async def change_status(
         self,
         generation_id: str,

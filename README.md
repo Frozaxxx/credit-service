@@ -10,10 +10,11 @@
 docker compose up --build
 ```
 
-Поднимутся MySQL, Redis и RabbitMQ, применятся миграции, запустятся два процесса:
+Поднимутся MySQL, Redis и RabbitMQ, применятся миграции, запустятся три процесса:
 
 - `api` — HTTP API на http://localhost:8000, Swagger на http://localhost:8000/docs;
-- `worker` — обработчик очереди `generations`.
+- `worker` — обработчик очереди `generations`;
+- `reconciler` — фоновая сверка: генерации, зависшие в `pending` или `processing` дольше `STALE_GENERATION_SECONDS`, переводит в `failed` с возвратом кредитов.
 
 Панель RabbitMQ: http://localhost:15672, логин и пароль `guest` / `guest`.
 
@@ -26,6 +27,7 @@ uv sync
 uv run alembic upgrade head
 uv run uvicorn apps.api.main:app --reload
 uv run python -m apps.worker.main
+uv run python -m apps.reconciler.main
 ```
 
 Проверки:
@@ -78,7 +80,7 @@ apps  →  interface  →  application  →  domain  ←  infrastructure
 
 | Папка | Что там |
 |---|---|
-| `apps/` | Точки входа процессов `api` и `worker` |
+| `apps/` | Точки входа процессов `api`, `worker` и `reconciler` |
 | `components/interface/` | FastAPI-роутеры, схемы, зависимости, подписчик воркера, сборка контейнера (`composition/`) |
 | `components/application/` | Use case'ы. Без SQLAlchemy, FastAPI, Redis и FastStream |
 | `components/domain/` | Сущности, `types/enums`, ошибки, протоколы репозиториев и внешних сервисов. Без зависимостей от фреймворков |

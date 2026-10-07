@@ -1,5 +1,6 @@
 from collections.abc import Collection
 from dataclasses import replace
+from datetime import datetime, timedelta
 
 from components.domain.entities.balance_transaction import BalanceTransaction
 from components.domain.entities.generation import Generation
@@ -39,6 +40,24 @@ class InMemoryGenerationRepository:
     async def get(self, generation_id: str) -> Generation | None:
         generation = self._storage.generations.get(generation_id)
         return None if generation is None else replace(generation)
+
+    async def list_stale(
+        self,
+        *,
+        older_than_seconds: int,
+        limit: int,
+    ) -> list[Generation]:
+        threshold = datetime.now() - timedelta(seconds=older_than_seconds)
+        stale = [
+            generation
+            for generation in self._storage.generations.values()
+            if generation.status
+            in (GenerationStatus.PENDING, GenerationStatus.PROCESSING)
+            and generation.updated_at is not None
+            and generation.updated_at < threshold
+        ]
+        stale.sort(key=lambda generation: generation.updated_at or threshold)
+        return [replace(generation) for generation in stale[:limit]]
 
     async def change_status(
         self,

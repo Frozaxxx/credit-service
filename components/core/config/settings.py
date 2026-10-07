@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     provider_timeout_seconds: float = Field(default=5, gt=0)
     provider_retry_base_delay_seconds: float = Field(default=1, ge=0)
 
+    stale_generation_seconds: int = Field(default=600, gt=0)
+    reconcile_interval_seconds: float = Field(default=60, gt=0)
+    reconcile_batch_size: int = Field(default=100, gt=0)
+
     log_level: str = "INFO"
 
 

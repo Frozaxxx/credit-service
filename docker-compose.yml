@@ -8,6 +8,9 @@ x-app-env: &app-env
   PROVIDER_MAX_ATTEMPTS: "3"
   PROVIDER_TIMEOUT_SECONDS: "5"
   PROVIDER_RETRY_BASE_DELAY_SECONDS: "1"
+  STALE_GENERATION_SECONDS: "600"
+  RECONCILE_INTERVAL_SECONDS: "60"
+  RECONCILE_BATCH_SIZE: "100"
   LOG_LEVEL: INFO
 
 x-app-depends: &app-depends
@@ -80,5 +83,11 @@ services:
   worker:
     build: .
     command: python -m apps.worker.main
+    environment: *app-env
+    depends_on: *app-depends
+
+  reconciler:
+    build: .
+    command: python -m apps.reconciler.main
     environment: *app-env
     depends_on: *app-depends
