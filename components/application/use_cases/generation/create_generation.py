@@ -58,10 +58,24 @@ class CreateGeneration:
                     reference_id=generation.id,
                 )
             )
-            await self._task_publisher.publish(generation.id)
             await uow.commit()
 
-        await self._balance_cache.invalidate(user_id)
+        # Задачу публикуем только после коммита. Иначе воркер может получить
+        # сообщение раньше, чем генерация станет видна в БД, не найти её
+        # и подтвердить сообщение — генерация навсегда останется в pending.
+        try:
+            await self._task_publisher.publish(generation.id)
+        except Exception:
+            logger.exception(
+                "Generation task publish failed, generation left in pending "
+                "generation_id=%s user_id=%s",
+                generation.id,
+                user_id,
+            )
+            raise
+        finally:
+            await self._balance_cache.invalidate(user_id)
+
         logger.info(
             "Generation created generation_id=%s user_id=%s cost=%s",
             generation.id,

@@ -6,6 +6,19 @@ from components.application.use_cases.generation.create_generation import (
 from components.domain.errors.billing.errors import InsufficientCreditsError
 from components.domain.types.enums.billing.transaction_kind import TransactionKind
 from components.domain.types.enums.generation.generation_status import GenerationStatus
+from tests.fakes.in_memory_services import FailingTaskPublisher
+from tests.fakes.in_memory_unit_of_work import InMemoryUnitOfWork
+
+
+class CommitAwarePublisher:
+    """Запоминает, сколько коммитов было сделано к моменту публикации."""
+
+    def __init__(self, uow: InMemoryUnitOfWork) -> None:
+        self._uow = uow
+        self.commits_at_publish: list[int] = []
+
+    async def publish(self, generation_id: str) -> None:
+        self.commits_at_publish.append(self._uow.commits)
 
 
 def make_use_case(uow, task_publisher, balance_cache) -> CreateGeneration:
@@ -92,3 +105,28 @@ async def test_balance_for_one_generation_allows_exactly_one(
     assert list(storage.generations) == [first.id]
     assert [t.amount for t in storage.transactions] == [-10]
     assert task_publisher.published == [first.id]
+
+
+async def test_task_is_published_only_after_commit(uow, storage, balance_cache) -> None:
+    storage.balances["user-1"] = 10
+    publisher = CommitAwarePublisher(uow)
+
+    await make_use_case(uow, publisher, balance_cache).execute("user-1", "a cat")
+
+    assert publisher.commits_at_publish == [1]
+
+
+async def test_publish_failure_is_raised_and_generation_is_already_saved(
+    uow, storage, balance_cache
+) -> None:
+    storage.balances["user-1"] = 10
+    balance_cache.values["user-1"] = 10
+
+    with pytest.raises(ConnectionError):
+        await make_use_case(uow, FailingTaskPublisher(), balance_cache).execute(
+            "user-1", "a cat"
+        )
+
+    assert uow.commits == 1
+    assert len(storage.generations) == 1
+    assert "user-1" not in balance_cache.values

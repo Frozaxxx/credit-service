@@ -20,6 +20,11 @@ class RecordingTaskPublisher:
         self.published.append(generation_id)
 
 
+class FailingTaskPublisher:
+    async def publish(self, generation_id: str) -> None:
+        raise ConnectionError("broker is unavailable")
+
+
 class StubGenerationProvider:
     def __init__(self, result_url: str = "https://cdn.example.com/r.png") -> None:
         self.result_url = result_url
