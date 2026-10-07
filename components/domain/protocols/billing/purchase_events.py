@@ -4,6 +4,10 @@ from components.domain.entities.purchase_event import PurchaseEvent
 
 
 class IPurchaseEventRepository(Protocol):
-    async def exists(self, event_id: str) -> bool: ...
+    async def add(self, event: PurchaseEvent) -> None:
+        """Сохраняет событие покупки.
 
-    async def add(self, event: PurchaseEvent) -> None: ...
+        Raises:
+            DuplicatePurchaseEventError: событие с таким event_id уже сохранено.
+        """
+        ...

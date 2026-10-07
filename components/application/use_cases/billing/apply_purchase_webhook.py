@@ -2,6 +2,7 @@ import logging
 
 from components.domain.entities.balance_transaction import BalanceTransaction
 from components.domain.entities.purchase_event import PurchaseEvent
+from components.domain.errors.billing.errors import DuplicatePurchaseEventError
 from components.domain.protocols.billing.balance_cache import IBalanceCache
 from components.domain.protocols.shared.unit_of_work import IUnitOfWork
 from components.domain.types.enums.billing.purchase_result import PurchaseResult
@@ -24,11 +25,19 @@ class ApplyPurchaseWebhook:
 
     async def _apply(self, event: PurchaseEvent) -> PurchaseResult:
         async with self._uow as uow:
-            if await uow.purchase_events.exists(event.event_id):
-                logger.info("Duplicate purchase event event_id=%s", event.event_id)
+            # Проверки «есть ли уже такое событие» нет намеренно: между проверкой
+            # и вставкой успевает пройти параллельный повтор вебхука. Дубликат
+            # определяет уникальный индекс по event_id, поэтому вставка идёт первой.
+            try:
+                await uow.purchase_events.add(event)
+            except DuplicatePurchaseEventError:
+                logger.info(
+                    "Duplicate purchase event event_id=%s user_id=%s",
+                    event.event_id,
+                    event.user_id,
+                )
                 return PurchaseResult.DUPLICATE
 
-            await uow.purchase_events.add(event)
             await uow.balances.increment(event.user_id, event.credits)
             await uow.transactions.add(
                 BalanceTransaction(

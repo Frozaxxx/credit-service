@@ -4,6 +4,7 @@ from components.domain.entities.balance_transaction import BalanceTransaction
 from components.domain.entities.generation import Generation
 from components.domain.entities.purchase_event import PurchaseEvent
 from components.domain.entities.user_balance import UserBalance
+from components.domain.errors.billing.errors import DuplicatePurchaseEventError
 from components.domain.types.enums.generation.generation_status import GenerationStatus
 from tests.fakes.in_memory_storage import InMemoryStorage
 
@@ -56,10 +57,10 @@ class InMemoryPurchaseEventRepository:
     def __init__(self, storage: InMemoryStorage) -> None:
         self._storage = storage
 
-    async def exists(self, event_id: str) -> bool:
-        return any(e.event_id == event_id for e in self._storage.purchase_events)
-
     async def add(self, event: PurchaseEvent) -> None:
+        # Повторяет уникальный индекс по event_id в MySQL.
+        if any(e.event_id == event.event_id for e in self._storage.purchase_events):
+            raise DuplicatePurchaseEventError(event.event_id)
         self._storage.purchase_events.append(event)
 
 

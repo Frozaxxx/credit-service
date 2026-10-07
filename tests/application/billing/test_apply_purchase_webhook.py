@@ -34,6 +34,32 @@ async def test_repeated_event_is_ignored(uow, storage, balance_cache) -> None:
     assert result == PurchaseResult.DUPLICATE
     assert storage.balances["user-1"] == 50
     assert len(storage.transactions) == 1
+    assert len(storage.purchase_events) == 1
+    assert uow.commits == 1
+
+
+async def test_same_event_for_many_retries_is_credited_once(
+    uow, storage, balance_cache
+) -> None:
+    use_case = ApplyPurchaseWebhook(uow, balance_cache)
+
+    results = [await use_case.execute(make_event()) for _ in range(5)]
+
+    assert results.count(PurchaseResult.PROCESSED) == 1
+    assert results.count(PurchaseResult.DUPLICATE) == 4
+    assert storage.balances["user-1"] == 50
+
+
+async def test_different_events_are_credited_separately(
+    uow, storage, balance_cache
+) -> None:
+    use_case = ApplyPurchaseWebhook(uow, balance_cache)
+
+    await use_case.execute(make_event("evt-1", credits=50))
+    await use_case.execute(make_event("evt-2", credits=30))
+
+    assert storage.balances["user-1"] == 80
+    assert [t.reference_id for t in storage.transactions] == ["evt-1", "evt-2"]
 
 
 async def test_balance_is_fresh_right_after_purchase(
