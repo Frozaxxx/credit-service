@@ -38,16 +38,17 @@ class CreateGeneration:
         )
 
         async with self._uow as uow:
-            balance = await uow.balances.get(user_id)
-            available = 0 if balance is None else balance.balance
-            if available < generation.cost:
+            # Нельзя читать баланс и потом записывать новое значение: два
+            # параллельных запроса прочитают одно и то же и спишут один раз.
+            # Проверку и списание делает один атомарный запрос в БД.
+            if not await uow.balances.debit(user_id, generation.cost):
+                balance = await uow.balances.get(user_id)
                 raise InsufficientCreditsError(
                     user_id=user_id,
                     required=generation.cost,
-                    available=available,
+                    available=0 if balance is None else balance.balance,
                 )
 
-            await uow.balances.set_balance(user_id, available - generation.cost)
             await uow.generations.add(generation)
             await uow.transactions.add(
                 BalanceTransaction(

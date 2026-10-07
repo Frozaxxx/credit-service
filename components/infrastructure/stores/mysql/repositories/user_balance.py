@@ -1,4 +1,6 @@
-from sqlalchemy import select, update
+from typing import Any, cast
+
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,12 +23,18 @@ class UserBalanceRepository(IUserBalanceRepository):
             return None
         return UserBalance(user_id=model.user_id, balance=model.balance)
 
-    async def set_balance(self, user_id: str, balance: int) -> None:
-        await self._session.execute(
+    async def debit(self, user_id: str, amount: int) -> bool:
+        # Проверка остатка и списание — один UPDATE: строка блокируется на время
+        # транзакции, параллельный запрос дождётся коммита и увидит новый баланс.
+        result = await self._session.execute(
             update(UserBalances)
-            .where(UserBalances.user_id == user_id)
-            .values(balance=balance)
+            .where(
+                UserBalances.user_id == user_id,
+                UserBalances.balance >= amount,
+            )
+            .values(balance=UserBalances.balance - amount)
         )
+        return cast(CursorResult[Any], result).rowcount == 1
 
     async def increment(self, user_id: str, delta: int) -> None:
         stmt = mysql_insert(UserBalances).values(user_id=user_id, balance=delta)

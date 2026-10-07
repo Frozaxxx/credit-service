@@ -49,3 +49,46 @@ async def test_insufficient_credits(
     assert storage.balances["user-1"] == 5
     assert storage.generations == {}
     assert task_publisher.published == []
+
+
+async def test_insufficient_credits_error_reports_available_balance(
+    uow, storage, task_publisher, balance_cache
+) -> None:
+    storage.balances["user-1"] = 5
+
+    with pytest.raises(InsufficientCreditsError) as exc_info:
+        await make_use_case(uow, task_publisher, balance_cache).execute(
+            "user-1", "a cat in space"
+        )
+
+    assert exc_info.value.required == 10
+    assert exc_info.value.available == 5
+
+
+async def test_user_without_balance_cannot_generate(
+    uow, storage, task_publisher, balance_cache
+) -> None:
+    with pytest.raises(InsufficientCreditsError) as exc_info:
+        await make_use_case(uow, task_publisher, balance_cache).execute(
+            "nobody", "a cat in space"
+        )
+
+    assert exc_info.value.available == 0
+    assert storage.balances == {}
+    assert storage.transactions == []
+
+
+async def test_balance_for_one_generation_allows_exactly_one(
+    uow, storage, task_publisher, balance_cache
+) -> None:
+    storage.balances["user-1"] = 10
+    use_case = make_use_case(uow, task_publisher, balance_cache)
+
+    first = await use_case.execute("user-1", "a cat in space")
+    with pytest.raises(InsufficientCreditsError):
+        await use_case.execute("user-1", "a cat in space")
+
+    assert storage.balances["user-1"] == 0
+    assert list(storage.generations) == [first.id]
+    assert [t.amount for t in storage.transactions] == [-10]
+    assert task_publisher.published == [first.id]

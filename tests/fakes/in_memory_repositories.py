@@ -18,9 +18,11 @@ class InMemoryUserBalanceRepository:
             return None
         return UserBalance(user_id=user_id, balance=self._storage.balances[user_id])
 
-    async def set_balance(self, user_id: str, balance: int) -> None:
-        if user_id in self._storage.balances:
-            self._storage.balances[user_id] = balance
+    async def debit(self, user_id: str, amount: int) -> bool:
+        if self._storage.balances.get(user_id, 0) < amount:
+            return False
+        self._storage.balances[user_id] -= amount
+        return True
 
     async def increment(self, user_id: str, delta: int) -> None:
         self._storage.balances[user_id] = self._storage.balances.get(user_id, 0) + delta
