@@ -3,6 +3,9 @@ import pytest
 from components.application.use_cases.generation.create_generation import (
     CreateGeneration,
 )
+from components.application.use_cases.generation.fail_generation import (
+    FailGeneration,
+)
 from components.domain.errors.billing.errors import InsufficientCreditsError
 from components.domain.types.enums.billing.transaction_kind import TransactionKind
 from components.domain.types.enums.generation.generation_status import GenerationStatus
@@ -26,6 +29,7 @@ def make_use_case(uow, task_publisher, balance_cache) -> CreateGeneration:
         uow=uow,
         task_publisher=task_publisher,
         balance_cache=balance_cache,
+        fail_generation=FailGeneration(uow, balance_cache),
         generation_cost=10,
     )
 
@@ -116,7 +120,7 @@ async def test_task_is_published_only_after_commit(uow, storage, balance_cache) 
     assert publisher.commits_at_publish == [1]
 
 
-async def test_publish_failure_is_raised_and_generation_is_already_saved(
+async def test_publish_failure_fails_generation_and_refunds_credits(
     uow, storage, balance_cache
 ) -> None:
     storage.balances["user-1"] = 10
@@ -127,6 +131,12 @@ async def test_publish_failure_is_raised_and_generation_is_already_saved(
             "user-1", "a cat"
         )
 
-    assert uow.commits == 1
-    assert len(storage.generations) == 1
+    (generation,) = storage.generations.values()
+    assert generation.status == GenerationStatus.FAILED
+    assert generation.error == "Could not enqueue the generation task"
+    assert storage.balances["user-1"] == 10
+    assert [(t.kind, t.amount) for t in storage.transactions] == [
+        (TransactionKind.GENERATION_DEBIT, -10),
+        (TransactionKind.GENERATION_REFUND, 10),
+    ]
     assert "user-1" not in balance_cache.values

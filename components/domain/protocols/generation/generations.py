@@ -1,3 +1,4 @@
+from collections.abc import Collection
 from typing import Protocol
 
 from components.domain.entities.generation import Generation
@@ -9,11 +10,18 @@ class IGenerationRepository(Protocol):
 
     async def get(self, generation_id: str) -> Generation | None: ...
 
-    async def update_status(
+    async def change_status(
         self,
         generation_id: str,
-        status: GenerationStatus,
         *,
+        expected: Collection[GenerationStatus],
+        new: GenerationStatus,
         result_url: str | None = None,
         error: str | None = None,
-    ) -> None: ...
+    ) -> bool:
+        """Атомарно переводит генерацию в статус new, если сейчас она в одном из expected.
+
+        Возвращает False и ничего не меняет, если генерации нет или её статус
+        уже другой: значит, переход успел сделать кто-то ещё.
+        """
+        ...

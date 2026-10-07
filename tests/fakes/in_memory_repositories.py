@@ -1,3 +1,4 @@
+from collections.abc import Collection
 from dataclasses import replace
 
 from components.domain.entities.balance_transaction import BalanceTransaction
@@ -39,20 +40,22 @@ class InMemoryGenerationRepository:
         generation = self._storage.generations.get(generation_id)
         return None if generation is None else replace(generation)
 
-    async def update_status(
+    async def change_status(
         self,
         generation_id: str,
-        status: GenerationStatus,
         *,
+        expected: Collection[GenerationStatus],
+        new: GenerationStatus,
         result_url: str | None = None,
         error: str | None = None,
-    ) -> None:
+    ) -> bool:
         generation = self._storage.generations.get(generation_id)
-        if generation is None:
-            return
-        generation.status = status
+        if generation is None or generation.status not in expected:
+            return False
+        generation.status = new
         generation.result_url = result_url
         generation.error = error
+        return True
 
 
 class InMemoryPurchaseEventRepository:

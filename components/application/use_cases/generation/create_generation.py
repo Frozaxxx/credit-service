@@ -1,6 +1,9 @@
 import logging
 from uuid import uuid4
 
+from components.application.use_cases.generation.fail_generation import (
+    FailGeneration,
+)
 from components.domain.entities.balance_transaction import BalanceTransaction
 from components.domain.entities.generation import Generation
 from components.domain.errors.billing.errors import InsufficientCreditsError
@@ -21,11 +24,13 @@ class CreateGeneration:
         uow: IUnitOfWork,
         task_publisher: IGenerationTaskPublisher,
         balance_cache: IBalanceCache,
+        fail_generation: FailGeneration,
         generation_cost: int,
     ) -> None:
         self._uow = uow
         self._task_publisher = task_publisher
         self._balance_cache = balance_cache
+        self._fail_generation = fail_generation
         self._generation_cost = generation_cost
 
     async def execute(self, user_id: str, prompt: str) -> Generation:
@@ -66,15 +71,20 @@ class CreateGeneration:
         try:
             await self._task_publisher.publish(generation.id)
         except Exception:
+            # Кредиты уже списаны, а задача до воркера не дойдёт: сразу
+            # возвращаем их, не дожидаясь фоновой сверки.
             logger.exception(
-                "Generation task publish failed, generation left in pending "
-                "generation_id=%s user_id=%s",
+                "Generation task publish failed generation_id=%s user_id=%s",
                 generation.id,
                 user_id,
             )
+            await self._fail_generation.execute(
+                generation,
+                "Could not enqueue the generation task",
+            )
             raise
-        finally:
-            await self._balance_cache.invalidate(user_id)
+
+        await self._balance_cache.invalidate(user_id)
 
         logger.info(
             "Generation created generation_id=%s user_id=%s cost=%s",

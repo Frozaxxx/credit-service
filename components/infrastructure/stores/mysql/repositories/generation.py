@@ -1,4 +1,7 @@
-from sqlalchemy import select, update
+from collections.abc import Collection
+from typing import Any, cast
+
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from components.domain.entities.generation import Generation
@@ -27,16 +30,23 @@ class GenerationRepository(IGenerationRepository):
         )
         return None if model is None else generation_to_domain(model)
 
-    async def update_status(
+    async def change_status(
         self,
         generation_id: str,
-        status: GenerationStatus,
         *,
+        expected: Collection[GenerationStatus],
+        new: GenerationStatus,
         result_url: str | None = None,
         error: str | None = None,
-    ) -> None:
-        await self._session.execute(
+    ) -> bool:
+        # Проверка текущего статуса и запись нового — один UPDATE. Из двух
+        # конкурентов строку обновит только один, второй получит rowcount == 0.
+        result = await self._session.execute(
             update(Generations)
-            .where(Generations.id == generation_id)
-            .values(status=status.value, result_url=result_url, error=error)
+            .where(
+                Generations.id == generation_id,
+                Generations.status.in_([status.value for status in expected]),
+            )
+            .values(status=new.value, result_url=result_url, error=error)
         )
+        return cast(CursorResult[Any], result).rowcount == 1

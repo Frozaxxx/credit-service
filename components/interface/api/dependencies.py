@@ -13,6 +13,9 @@ from components.application.use_cases.billing.list_user_transactions import (
 from components.application.use_cases.generation.create_generation import (
     CreateGeneration,
 )
+from components.application.use_cases.generation.fail_generation import (
+    FailGeneration,
+)
 from components.application.use_cases.generation.get_generation import GetGeneration
 from components.interface.composition.container import Container
 
@@ -59,6 +62,10 @@ def get_create_generation(container: ContainerDep) -> CreateGeneration:
         uow=container.unit_of_work(),
         task_publisher=container.generation_task_publisher(),
         balance_cache=container.balance_cache(),
+        fail_generation=FailGeneration(
+            uow=container.unit_of_work(),
+            balance_cache=container.balance_cache(),
+        ),
         generation_cost=container.settings.generation_cost,
     )
 
